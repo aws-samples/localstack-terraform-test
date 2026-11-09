@@ -200,6 +200,10 @@ docker compose down
 
 We provide an example how to integrate LocalStack and Terraform Test in a CI/CD pipeline with [GitHub Actions](.github/workflows/localstack-terraform-test.yml).
 
+## Disclaimer
+
+This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.
+
 ## Authors
 
 Pattern created by Ivan Girardi (AWS) and Ioannis Kalyvas (AWS).
