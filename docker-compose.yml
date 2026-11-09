@@ -1,11 +1,12 @@
 services:
   localstack:
     container_name: localstack
-    image: localstack/localstack:latest
+    image: localstack/localstack:4.14.0
     read_only: false  # required to write to /tmp
+    # Bind to localhost only, so the LocalStack API is not reachable from other machines on the network
     ports:
-      - "4566:4566"
-      - "4571:4571"
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:4571:4571"
     environment:
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
