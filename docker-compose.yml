@@ -1,6 +1,8 @@
 services:
   localstack:
     container_name: localstack
+    # Pinned for demonstration only: 4.14.0 is the final LocalStack Community release and no longer
+    # receives security updates. Use a current image (requires LOCALSTACK_AUTH_TOKEN) beyond this sample. See README.
     image: localstack/localstack:4.14.0
     read_only: false  # required to write to /tmp
     # Bind to localhost only, so the LocalStack API is not reachable from other machines on the network

@@ -96,7 +96,9 @@ docker compose up -d
 
 Wait until the Local Stack container is up and running.
 
-> **Note:** `docker-compose.yml` pins the LocalStack image to version `4.14.0`, which runs without an account. Newer LocalStack images (`latest`, `2026.x`) require a `LOCALSTACK_AUTH_TOKEN`. To use a newer image, set the token in your environment and update the image tag.
+> **Important:** `docker-compose.yml` pins the LocalStack image to `4.14.0`, the final LocalStack Community release, only so that this sample can be demonstrated without a LocalStack account. This image no longer receives security updates and contains known High and Critical vulnerabilities. For anything beyond trying out this sample, use a current LocalStack image (for example, `latest` or a `2026.x` tag), which receives security updates and requires a `LOCALSTACK_AUTH_TOKEN`. Set the token as an environment variable, treat it as a secret, and don't commit it.
+>
+> The container also mounts the Docker socket (`/var/run/docker.sock`), which gives it root-equivalent access to the host. Run it only on a single-user workstation or an ephemeral CI runner, with test data only, and never on a shared or long-lived host.
 
 ### Authentication
 
