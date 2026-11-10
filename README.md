@@ -1,5 +1,7 @@
 # Testing AWS infrastructure using LocalStack and Terraform Test
 
+> **Note:** This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.
+
 This pattern provides a solution to test IaC in Terraform locally without the need to provision infrastructure in AWS. It uses the [Terraform Test framework](https://developer.hashicorp.com/terraform/language/tests) introduced with Terraform version 1.6 and we showcase how to integrate it with LocalStack for Cost Optimization, Speed and Efficiency, Consistency and Reproducibility, Isolation and Safety and Simplified Development Workflow.
 
 Running tests against LocalStack eliminates the need to use actual AWS services, thus avoiding costs associated with creating, modifying, and destroying resources in AWS. Testing locally is significantly faster than deploying resources in AWS.
@@ -94,6 +96,19 @@ docker compose up -d
 
 Wait until the Local Stack container is up and running.
 
+> **Important:** `docker-compose.yml` pins the LocalStack image to `4.14.0`, the final LocalStack Community release, only so that this sample can be demonstrated without a LocalStack account. This image no longer receives security updates and contains known High and Critical vulnerabilities. For anything beyond trying out this sample, use a current LocalStack image (for example, `latest` or a `2026.x` tag), which receives security updates and requires a `LOCALSTACK_AUTH_TOKEN`. Set the token as an environment variable, treat it as a secret, and don't commit it.
+>
+> The container also mounts the Docker socket (`/var/run/docker.sock`), which gives it root-equivalent access to the host. Run it only on a single-user workstation or an ephemeral CI runner, with test data only, and never on a shared or long-lived host.
+
+### Authentication
+
+The AWS provider reads credentials from the environment. Export the following dummy credentials, which LocalStack accepts. Do not use real AWS credentials. As a safeguard, the provider is configured with `allowed_account_ids = ["000000000000"]` (the default LocalStack account ID), so Terraform refuses to run against a real AWS account.
+
+```shell
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+```
+
 ### Terraform Initialization
 
 Enter the following command from the cloned repsotiory to initialize Terraform.
@@ -186,6 +201,10 @@ docker compose down
 ## GitHub Actions
 
 We provide an example how to integrate LocalStack and Terraform Test in a CI/CD pipeline with [GitHub Actions](.github/workflows/localstack-terraform-test.yml).
+
+## Disclaimer
+
+This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.
 
 ## Authors
 

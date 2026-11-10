@@ -1,10 +1,13 @@
 provider "aws" {
-  access_key = "test"
-  secret_key = "test"
-  region     = "eu-central-1"
+  # Credentials are read from the environment (AWS_ACCESS_KEY_ID and
+  # AWS_SECRET_ACCESS_KEY). See README.md.
+  region = "eu-central-1"
+
+  # Safeguard: only allow the default LocalStack account ID, so that the
+  # configuration can never be applied to a real AWS account.
+  allowed_account_ids = ["000000000000"]
 
   s3_use_path_style           = true
-  skip_requesting_account_id  = true
   skip_credentials_validation = true
   skip_metadata_api_check     = true
 
@@ -21,6 +24,7 @@ provider "aws" {
     firehose       = "http://localhost:4566"
     iam            = "http://localhost:4566"
     kinesis        = "http://localhost:4566"
+    kms            = "http://localhost:4566"
     lambda         = "http://localhost:4566"
     rds            = "http://localhost:4566"
     redshift       = "http://localhost:4566"

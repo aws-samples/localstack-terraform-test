@@ -2,7 +2,7 @@
 variable "s3_bucket_name" {
   description = "The name of the S3 bucket"
   type        = string
-  default     = "my-test-bucket"
+  default     = "amzn-s3-demo-source-bucket"
 }
 
 variable "dynamodb_table_name" {
@@ -34,4 +34,15 @@ variable "sfn_name" {
   description = "The name of the Step Functions state machine"
   type        = string
   default     = "UploadStateMachine"
+}
+
+variable "log_retention_in_days" {
+  description = "Retention period in days for the CloudWatch log groups (at least 1 year)"
+  type        = number
+  default     = 365
+
+  validation {
+    condition     = var.log_retention_in_days >= 365
+    error_message = "Log retention must be at least 365 days."
+  }
 }

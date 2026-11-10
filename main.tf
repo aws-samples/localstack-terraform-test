@@ -50,9 +50,56 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+# Customer managed KMS key used to encrypt the DynamoDB table and the CloudWatch log groups
+resource "aws_kms_key" "this" {
+  description             = "CMK for the DynamoDB table and CloudWatch log groups"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+
+  # In a key policy, Resource "*" refers to this key only.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "EnableRootAccountPermissions"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "AllowCloudWatchLogsUseOfTheKey"
+        Effect    = "Allow"
+        Principal = { Service = "logs.${data.aws_region.current.name}.amazonaws.com" }
+        Action = [
+          "kms:Encrypt*",
+          "kms:Decrypt*",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:*"
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_kms_alias" "this" {
+  name          = "alias/localstack-terraform-test"
+  target_key_id = aws_kms_key.this.key_id
+}
+
 # Create a DynamoDB Table
 resource "aws_dynamodb_table" "files" {
-  # checkov:skip=CKV_AWS_119: "Test DynamoDB table does not need to be encrypted using a KMS Customer Managed CMK"
   name         = var.dynamodb_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = var.dynamodb_hash_key
@@ -62,6 +109,10 @@ resource "aws_dynamodb_table" "files" {
   }
   point_in_time_recovery {
     enabled = true
+  }
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.this.arn
   }
 }
 
@@ -103,23 +154,19 @@ data "aws_iam_policy_document" "lambda_policy" {
     actions = [
       "logs:CreateLogStream",
       "logs:PutLogEvents",
-      "logs:DescribeLogGroups"
     ]
 
     resources = ["${aws_cloudwatch_log_group.MyLambdaLogGroup.arn}:*"]
   }
 
+  # Required for active X-Ray tracing. These X-Ray actions do not support
+  # resource-level permissions, so the resource must be "*".
+  # See https://docs.aws.amazon.com/lambda/latest/dg/services-xray.html
   statement {
     effect = "Allow"
     actions = [
-      "cloudwatch:PutMetricData",
-      "logs:CreateLogDelivery",
-      "logs:GetLogDelivery",
-      "logs:UpdateLogDelivery",
-      "logs:DeleteLogDelivery",
-      "logs:ListLogDeliveries",
-      "logs:PutResourcePolicy",
-      "logs:DescribeResourcePolicies",
+      "xray:PutTraceSegments",
+      "xray:PutTelemetryRecords",
     ]
     resources = ["*"]
   }
@@ -153,7 +200,7 @@ resource "aws_lambda_function" "upload_trigger_lambda" {
   # checkov:skip=CKV_AWS_115: "Test Lambda function does not need function-level concurrent execution limit"
   function_name = var.lambda_name
   handler       = "index.lambda_handler"
-  runtime       = "python3.8"
+  runtime       = "python3.12"
   role          = aws_iam_role.lambda_execution_role.arn
 
   filename         = "${path.module}/lambda/lambda-trigger-sm.zip"
@@ -172,17 +219,15 @@ resource "aws_lambda_function" "upload_trigger_lambda" {
 }
 
 resource "aws_cloudwatch_log_group" "MyLambdaLogGroup" {
-  # checkov:skip=CKV_AWS_338: "Test logs do not require retention for 1 year"
-  # checkov:skip=CKV_AWS_158: "Test logs do not require encrypted by KMS"
-  retention_in_days = 1
   name              = "/aws/lambda/${aws_lambda_function.upload_trigger_lambda.function_name}"
+  retention_in_days = var.log_retention_in_days
+  kms_key_id        = aws_kms_key.this.arn
 }
 
 resource "aws_cloudwatch_log_group" "MySFNLogGroup" {
-  # checkov:skip=CKV_AWS_338: "Test logs do not require retention for 1 year"
-  # checkov:skip=CKV_AWS_158: "Test logs do not require encrypted by KMS"
   name_prefix       = "/aws/vendedlogs/states/${var.sfn_name}-"
-  retention_in_days = 1
+  retention_in_days = var.log_retention_in_days
+  kms_key_id        = aws_kms_key.this.arn
 }
 
 data "aws_iam_policy_document" "sf_policy" {
@@ -198,6 +243,31 @@ data "aws_iam_policy_document" "sf_policy" {
     ]
   }
 
+  # Required to write items to the DynamoDB table encrypted with the customer managed key.
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "kms:Decrypt",
+      "kms:GenerateDataKey",
+      "kms:DescribeKey",
+    ]
+
+    resources = [
+      aws_kms_key.this.arn,
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["dynamodb.${data.aws_region.current.name}.amazonaws.com"]
+    }
+  }
+
+  # Required for Step Functions logging to CloudWatch Logs. The CloudWatch Logs
+  # vended log delivery APIs do not support resource-level permissions, so the
+  # resource must be "*".
+  # See https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html#cloudwatch-iam-policy
   statement {
     effect = "Allow"
     actions = [
@@ -213,6 +283,19 @@ data "aws_iam_policy_document" "sf_policy" {
     resources = ["*"]
   }
 
+  # Required for X-Ray tracing of the state machine. These X-Ray actions do not
+  # support resource-level permissions, so the resource must be "*".
+  # See https://docs.aws.amazon.com/step-functions/latest/dg/procedure-enable-xray-tracing.html
+  statement {
+    effect = "Allow"
+    actions = [
+      "xray:PutTraceSegments",
+      "xray:PutTelemetryRecords",
+      "xray:GetSamplingRules",
+      "xray:GetSamplingTargets",
+    ]
+    resources = ["*"]
+  }
 }
 
 # Attach a policy to the IAM role that allows PutItem in DynamoDB and CloudWatch Logs
